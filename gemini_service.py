@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 load_dotenv(override=True)  # 強制重新載入 .env
 
@@ -65,6 +66,9 @@ async def generate_morning_message(
     response = await client.aio.models.generate_content(
         model=GEMINI_MODEL,
         contents=prompt,
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
 
     if response.text:

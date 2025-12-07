@@ -13,3 +13,6 @@ wheels/
 # Google OAuth
 credentials.json
 token.json
+
+# Data
+data/

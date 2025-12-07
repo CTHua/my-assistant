@@ -71,7 +71,6 @@
 │  │           FastAPI Backend (:8000)            │   │
 │  │                                              │   │
 │  │  /morning  ─── 早安流程                      │   │
-│  │  /night    ─── 晚安流程                      │   │
 │  │  /health   ─── 健康檢查                      │   │
 │  └──────────────────┬───────────────────────────┘   │
 │                     │                               │
@@ -148,23 +147,11 @@ Response:
 }
 ```
 
-### POST /night
-
-晚安流程。
-
-Request:
-```json
-{
-  "bedtime": "2024-12-04T02:30:00",
-  "tasks_completed_today": 3
-}
-```
-
 ### GET /health
 
 健康檢查，回傳 `{"status": "ok"}`。
 
-### GET /test/morning, GET /test/night
+### GET /test/morning
 
 開發測試用，不需要 iOS 捷徑也能觸發。
 
@@ -173,12 +160,11 @@ Request:
 ## 待實作功能
 
 ### P0 - 核心功能
-- [ ] **Debounce 機制**：多個鬧鐘只觸發一次（1 小時內）
-- [ ] **SQLite 持久化**：記錄每日睡眠數據
-- [ ] **回應長度限制**：50 字內，適合通知顯示
+- [x] **SQLite 持久化**：記錄每日睡眠數據與早安快取
+- [x] **回應長度限制**：50 字內，適合通知顯示
 
 ### P1 - 重要功能
-- [ ] **Google Calendar OAuth**：完整整合（目前 placeholder）
+- [x] **Google Calendar OAuth**：完整整合
 - [ ] **每週回顧 GET /weekly-review**：睡眠趨勢、目標達成率
 - [ ] **職業審計追蹤**：記錄每日工時分配到哪條收入線
 
@@ -279,7 +265,6 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 # 測試
 curl http://localhost:8000/health
 curl http://localhost:8000/test/morning
-curl http://localhost:8000/test/night
 ```
 
 ---

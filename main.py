@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -7,8 +7,50 @@ from sleep_service import analyze_sleep
 from gemini_service import generate_morning_message
 from weather_service import get_weather
 from calendar_service import get_today_events, format_events_for_prompt
+from db_service import save_sleep_record, get_recent_sleep_records, get_morning_cache, save_morning_cache
 
 app = FastAPI(title="Personal AI Assistant")
+
+
+def format_display(
+    summary: str,
+    weather: str,
+    events: list[dict],
+    todos: list[str],
+) -> str:
+    """格式化顯示文字，適合 iOS 捷徑顯示。"""
+    lines = []
+    divider = " " * 20
+
+    # 天氣區塊
+    lines.append(f"☀️ 天氣｜{weather}")
+    lines.append("")
+
+    # AI 摘要
+    lines.append(summary)
+    lines.append("")
+    lines.append(divider)
+
+    # 行程區塊
+    lines.append("📅 今日行程")
+    if events:
+        for e in events:
+            loc = f" @ {e['location']}" if e.get("location") else ""
+            lines.append(f"  {e['start']}  {e['summary']}{loc}")
+    else:
+        lines.append("  無行程")
+    lines.append("")
+    lines.append(divider)
+
+    # 待辦區塊
+    lines.append("📋 待辦事項")
+    if todos:
+        for i, t in enumerate(todos, 1):
+            lines.append(f"  {i}. {t}")
+    else:
+        lines.append("  無待辦")
+
+    return "\n".join(lines)
 
 
 class MorningRequest(BaseModel):
@@ -22,6 +64,7 @@ class MorningResponse(BaseModel):
     weather: str  # 天氣摘要
     events: list[dict]  # 今日行程
     display: str  # 給捷徑顯示用的完整文字
+    cached: bool = False  # 是否來自快取
 
 
 @app.get("/health")
@@ -33,38 +76,72 @@ async def health_check():
 @app.post("/morning")
 async def morning(request: MorningRequest):
     """早安流程。"""
-    # 分析睡眠
+    today = date.today()
+
+    cached = get_morning_cache(today)
+    if cached:
+        return MorningResponse(
+            summary=cached["summary"],
+            todos=cached["todos"],
+            weather=cached["weather"],
+            events=cached["events"],
+            display=cached["display"],
+            cached=True,
+        )
+
     sleep = analyze_sleep(request.sleep_csv)
 
-    # 取得天氣
     weather = await get_weather(request.location)
     weather_summary = weather.get("summary", "天氣資料取得失敗")
 
-    # 取得今日行程
     events = get_today_events()
     events_text = format_events_for_prompt(events)
 
-    # 取得待辦事項
     tasks = get_tasks()
     todo_list = [t.content for t in tasks[:5]]
 
-    # Gemini 生成個人化訊息
     sleep_time = sleep.sleep_start.strftime("%H:%M")
     wake_time = sleep.sleep_end.strftime("%H:%M")
-    summary = await generate_morning_message(
-        sleep_time=sleep_time,
-        wake_time=wake_time,
-        sleep_hours=sleep.actual_sleep_hours,
-        quality=sleep.quality_score,
-        todos=todo_list,
-        weather=weather_summary,
-        events=events_text,
+
+    save_sleep_record(
+        sleep_date=sleep.sleep_end.date(),
+        sleep_start=sleep.sleep_start,
+        sleep_end=sleep.sleep_end,
+        total_hours=sleep.total_hours,
+        actual_sleep_hours=sleep.actual_sleep_hours,
+        deep_hours=sleep.deep_hours,
+        rem_hours=sleep.rem_hours,
+        core_hours=sleep.core_hours,
+        awake_hours=sleep.awake_hours,
+        awake_count=sleep.awake_count,
+        sleep_efficiency=sleep.sleep_efficiency,
+        quality_score=sleep.quality_score,
+        note=sleep.note,
     )
 
-    # 組合顯示文字
-    todo_text = "\n".join(f"• {t}" for t in todo_list) if todo_list else "無待辦"
-    events_display = "\n".join(f"• {e['start']} {e['summary']}" for e in events) if events else "無行程"
-    display = f"🌤 {weather_summary}\n\n{summary}\n\n📅 行程：\n{events_display}\n\n📋 待辦：\n{todo_text}"
+    try:
+        summary = await generate_morning_message(
+            sleep_time=sleep_time,
+            wake_time=wake_time,
+            sleep_hours=sleep.actual_sleep_hours,
+            quality=sleep.quality_score,
+            todos=todo_list,
+            weather=weather_summary,
+            events=events_text,
+        )
+    except Exception as e:
+        summary = f"生成早安訊息時發生錯誤：{str(e)}"
+
+    display = format_display(summary, weather_summary, events, todo_list)
+
+    save_morning_cache(
+        cache_date=today,
+        summary=summary,
+        weather=weather_summary,
+        events=events,
+        todos=todo_list,
+        display=display,
+    )
 
     return MorningResponse(
         summary=summary,
@@ -72,6 +149,7 @@ async def morning(request: MorningRequest):
         weather=weather_summary,
         events=events,
         display=display,
+        cached=False,
     )
 
 
@@ -101,19 +179,10 @@ async def test_morning():
 
     sleep_time = sleep.sleep_start.strftime("%H:%M")
     wake_time = sleep.sleep_end.strftime("%H:%M")
-    summary = await generate_morning_message(
-        sleep_time=sleep_time,
-        wake_time=wake_time,
-        sleep_hours=sleep.actual_sleep_hours,
-        quality=sleep.quality_score,
-        todos=todo_list,
-        weather=weather_summary,
-        events=events_text,
-    )
+    
+    summary = "測試用ai回覆，有天氣、行程、待辦事項"
 
-    todo_text = "\n".join(f"• {t}" for t in todo_list) if todo_list else "無待辦"
-    events_display = "\n".join(f"• {e['start']} {e['summary']}" for e in events) if events else "無行程"
-    display = f"🌤 {weather_summary}\n\n{summary}\n\n📅 行程：\n{events_display}\n\n📋 待辦：\n{todo_text}"
+    display = format_display(summary, weather_summary, events, todo_list)
 
     return MorningResponse(
         summary=summary,
@@ -138,7 +207,13 @@ class SleepAnalysisRequest(BaseModel):
     csv_data: str
 
 
-@app.post("/analyze/sleep")
+@app.post("/test/sleep_analyze")
 async def analyze_sleep_endpoint(request: SleepAnalysisRequest):
     """分析睡眠數據（接收 CSV 格式）。"""
     return analyze_sleep(request.csv_data)
+
+
+@app.get("/sleep/history")
+async def get_sleep_history(days: int = 7):
+    """取得最近 N 天的睡眠紀錄。"""
+    return get_recent_sleep_records(days)
