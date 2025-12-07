@@ -1,0 +1,17 @@
+[project]
+name = "my-assistant"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.123.8",
+    "google-api-python-client>=2.187.0",
+    "google-auth-httplib2>=0.2.1",
+    "google-auth-oauthlib>=1.2.3",
+    "google-genai>=1.53.0",
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.1",
+    "todoist-api-python>=3.1.0",
+    "uvicorn>=0.38.0",
+]
